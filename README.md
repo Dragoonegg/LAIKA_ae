@@ -51,12 +51,14 @@ wget https://repo.radeon.com/amdgpu-install/6.3.3/ubuntu/jammy/amdgpu-install_6.
 sudo dpkg -i amdgpu-install_6.3.60303-1_all.deb
 sudo amdgpu-install -y --usecase=graphics,rocm
 sudo usermod -a -G render,video $LOGNAME
-reboot
+reboot                  #reboot is required to complete AMD driver installation
 ```
 
 After installation, use amd-smi and hipcc --version to verify that the installation succeeded.
 
 ## Install NVIDIA Driver + CUDA
+
+Run the following commands:
 
 ```bash
 wget https://developer.download.nvidia.com/compute/cuda/12.8.1/local_installers/cuda_12.8.1_570.124.06_linux.run

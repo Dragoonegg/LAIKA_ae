@@ -6,9 +6,9 @@
  *   Copyright (C) 2022–2024 Isha Tarte
  *
  * Modifications and adaptations for LAIKA:
- *   Copyright (C) 2024-2025 Haoming Zhuo
+ *   Copyright (C) 2025 Haoming Zhuo
  *
- * This file is adapted from the original LAKE kernel module.
+ * This file is adapted from the original LAKE/MLLB kernel module.
  * Major changes include:
  *   - Integration with LAIKA framework
  *   - Hybrid execution support
@@ -26,6 +26,8 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
+
+
 #include "helpers.h"
 #include "consts.h"
 

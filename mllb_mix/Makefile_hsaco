@@ -1,0 +1,17 @@
+HIP_PATH ?= $(shell \
+	if [ -n "$$HIP_PATH" ]; then \
+		echo "$$HIP_PATH"; \
+	elif command -v hipcc >/dev/null 2>&1; then \
+		dirname $$(dirname $$(readlink -f $$(command -v hipcc))); \
+	elif [ -d "/opt/rocm" ]; then \
+		ls -d /opt/rocm* 2>/dev/null | head -1; \
+	else \
+		echo "/opt/rocm"; \
+	fi)
+HIP_INCLUDE = -I$(HIP_PATH)/include -I$(HIP_PATH)/hip/include
+HIP_FLAGS = -D__HIP_PLATFORM_AMD__ -x hip -std=c++17 -fPIC
+
+mllb.hsaco: kernels.cpp
+	hipcc $(HIP_INCLUDE) $(HIP_FLAGS) -O3 --genco -o $@ $+
+
+.PHONY: mllb.hsaco

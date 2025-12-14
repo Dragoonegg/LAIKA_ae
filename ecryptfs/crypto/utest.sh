@@ -1,0 +1,1 @@
+sudo ./test_user /home/drgegg/Desktop/lakebenchmark/LAKE/src/ecryptfs_hip/crypto/gcm_kernels.hsaco

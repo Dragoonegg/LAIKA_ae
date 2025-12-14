@@ -1,0 +1,6 @@
+ccflags-y +=  -I$(src)/../../kapi/include
+obj-m += test_lake_crypt.o
+test_lake_crypt-objs := test_lake_crypto.o
+
+KBUILD_EXTRA_SYMBOLS += $(src)/../../kapi/kernel/Module.symvers
+KBUILD_EXTRA_SYMBOLS += $(src)/../../kapi/kshm/Module.symvers

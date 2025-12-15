@@ -1,4 +1,5 @@
-This project is inspired by [LAKE](https://github.com/utcs-scea/LAKE). We thank the LAKE authors for making their work publicly available.
+# Acknowledgments
+This project is inspired by [LAKE](https://github.com/utcs-scea/LAKE). We would like to acknowledge their pioneering work, and we thank the LAKE authors for making their work publicly available.
 
 
 # Environment Setup：

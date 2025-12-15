@@ -1,3 +1,6 @@
+This project is inspired by [LAKE](https://github.com/utcs-scea/LAKE). We thank the LAKE authors for making their work publicly available.
+
+
 # Environment Setup：
 
 ## Build the kernel：

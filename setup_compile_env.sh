@@ -1,28 +1,28 @@
 #!/bin/bash
-# 检查并配置 CUDA 环境变量
+# Check and configure CUDA environment variables
 
-set -e  # 遇到错误时退出
+set -e  # Exit on error
 
-echo "=== CUDA 环境配置脚本 ==="
+echo "=== CUDA Environment Configuration Script ==="
 echo ""
 
-# 步骤1: 检查 nvcc 是否可用
-echo "=== 步骤1: 检查 CUDA 编译器 (nvcc) ==="
+# Step 1: Check if nvcc is available
+echo "=== Step 1: Check CUDA Compiler (nvcc) ==="
 if command -v nvcc &> /dev/null; then
-    echo "✓ 找到 nvcc，正在检查版本..."
+    echo "✓ Found nvcc, checking version..."
     nvcc --version
     echo ""
-    echo "CUDA 已正确配置在 PATH 中！"
+    echo "CUDA is correctly configured in PATH!"
     exit 0
 else
-    echo "✗ 未找到 nvcc 命令"
-    echo "需要将 CUDA 路径添加到环境变量中"
+    echo "✗ nvcc command not found"
+    echo "Need to add CUDA path to environment variables"
 fi
 
 echo ""
-echo "=== 步骤2: 查找 CUDA 安装路径 ==="
+echo "=== Step 2: Find CUDA Installation Path ==="
 
-# 常见的 CUDA 安装路径
+# Common CUDA installation paths
 POSSIBLE_CUDA_PATHS=(
     "/usr/local/cuda-12.8"
     "/usr/local/cuda-12.7"
@@ -42,20 +42,20 @@ CUDA_PATH=""
 for path in "${POSSIBLE_CUDA_PATHS[@]}"; do
     if [ -d "$path" ] && [ -f "$path/bin/nvcc" ]; then
         CUDA_PATH="$path"
-        echo "✓ 找到 CUDA 安装: $CUDA_PATH"
+        echo "✓ Found CUDA installation: $CUDA_PATH"
         break
     fi
 done
 
-# 如果没找到，尝试查找所有可能的 cuda 目录
+# If not found, try to find all possible cuda directories
 if [ -z "$CUDA_PATH" ]; then
-    echo "在常见路径中未找到 CUDA，正在搜索 /usr/local/cuda* ..."
+    echo "CUDA not found in common paths, searching /usr/local/cuda* ..."
     FOUND_PATHS=$(ls -d /usr/local/cuda* 2>/dev/null || true)
     if [ -n "$FOUND_PATHS" ]; then
         for path in $FOUND_PATHS; do
             if [ -f "$path/bin/nvcc" ]; then
                 CUDA_PATH="$path"
-                echo "✓ 找到 CUDA 安装: $CUDA_PATH"
+                echo "✓ Found CUDA installation: $CUDA_PATH"
                 break
             fi
         done
@@ -63,26 +63,26 @@ if [ -z "$CUDA_PATH" ]; then
 fi
 
 if [ -z "$CUDA_PATH" ]; then
-    echo "错误: 无法找到 CUDA 安装路径"
-    echo "请手动指定 CUDA 路径，或确保 CUDA 已正确安装"
+    echo "Error: Unable to find CUDA installation path"
+    echo "Please manually specify CUDA path, or ensure CUDA is properly installed"
     echo ""
-    echo "如果您的 CUDA 安装在非标准位置，请编辑此脚本并设置 CUDA_PATH 变量"
+    echo "If your CUDA is installed in a non-standard location, please edit this script and set the CUDA_PATH variable"
     exit 1
 fi
 
 echo ""
-echo "=== 步骤3: 检查 ~/.bashrc 配置 ==="
+echo "=== Step 3: Check ~/.bashrc Configuration ==="
 
 BASHRC_FILE="$HOME/.bashrc"
 BACKUP_FILE="${BASHRC_FILE}.backup.$(date +%Y%m%d_%H%M%S)"
 
-# 备份 .bashrc
+# Backup .bashrc
 if [ -f "$BASHRC_FILE" ]; then
     cp "$BASHRC_FILE" "$BACKUP_FILE"
-    echo "✓ 已备份 ~/.bashrc 到 $BACKUP_FILE"
+    echo "✓ Backed up ~/.bashrc to $BACKUP_FILE"
 fi
 
-# 检查是否已存在 CUDA PATH 配置
+# Check if CUDA PATH configuration already exists
 PATH_EXPORT="export PATH=${CUDA_PATH}/bin:\$PATH"
 LD_LIBRARY_PATH_EXPORT="export LD_LIBRARY_PATH=${CUDA_PATH}/lib64:\$LD_LIBRARY_PATH"
 
@@ -91,60 +91,60 @@ LD_LIBRARY_PATH_EXISTS=false
 
 if grep -q "export PATH=.*cuda.*bin" "$BASHRC_FILE" 2>/dev/null; then
     PATH_EXISTS=true
-    echo "✓ PATH 配置已存在"
+    echo "✓ PATH configuration already exists"
 else
-    echo "✗ PATH 配置不存在"
+    echo "✗ PATH configuration does not exist"
 fi
 
 if grep -q "export LD_LIBRARY_PATH=.*cuda.*lib64" "$BASHRC_FILE" 2>/dev/null; then
     LD_LIBRARY_PATH_EXISTS=true
-    echo "✓ LD_LIBRARY_PATH 配置已存在"
+    echo "✓ LD_LIBRARY_PATH configuration already exists"
 else
-    echo "✗ LD_LIBRARY_PATH 配置不存在"
+    echo "✗ LD_LIBRARY_PATH configuration does not exist"
 fi
 
 echo ""
-echo "=== 步骤4: 更新 ~/.bashrc ==="
+echo "=== Step 4: Update ~/.bashrc ==="
 
-# 添加配置（如果不存在）
+# Add configuration (if it doesn't exist)
 if [ "$PATH_EXISTS" = false ]; then
     echo "" >> "$BASHRC_FILE"
-    echo "# CUDA 环境变量配置" >> "$BASHRC_FILE"
+    echo "# CUDA environment variables configuration" >> "$BASHRC_FILE"
     echo "$PATH_EXPORT" >> "$BASHRC_FILE"
-    echo "✓ 已添加 PATH 配置"
+    echo "✓ Added PATH configuration"
 fi
 
 if [ "$LD_LIBRARY_PATH_EXISTS" = false ]; then
     if [ "$PATH_EXISTS" = true ]; then
-        # 如果 PATH 已存在但 LD_LIBRARY_PATH 不存在，在 PATH 行后添加
+        # If PATH exists but LD_LIBRARY_PATH doesn't, add it after PATH line
         sed -i "/export PATH=.*cuda.*bin/a $LD_LIBRARY_PATH_EXPORT" "$BASHRC_FILE"
     else
-        # 如果 PATH 也不存在，直接追加
+        # If PATH also doesn't exist, append directly
         echo "$LD_LIBRARY_PATH_EXPORT" >> "$BASHRC_FILE"
     fi
-    echo "✓ 已添加 LD_LIBRARY_PATH 配置"
+    echo "✓ Added LD_LIBRARY_PATH configuration"
 fi
 
 if [ "$PATH_EXISTS" = true ] && [ "$LD_LIBRARY_PATH_EXISTS" = true ]; then
-    echo "✓ 所有配置已存在，无需更新"
+    echo "✓ All configurations already exist, no update needed"
 fi
 
 echo ""
-echo "=== 步骤5: 验证配置 ==="
-echo "已添加到 ~/.bashrc 的配置："
+echo "=== Step 5: Verify Configuration ==="
+echo "Configuration added to ~/.bashrc:"
 echo "  $PATH_EXPORT"
 echo "  $LD_LIBRARY_PATH_EXPORT"
 echo ""
 
-echo "=== 完成 ==="
+echo "=== Complete ==="
 echo ""
-echo "配置已成功添加到 ~/.bashrc"
+echo "Configuration has been successfully added to ~/.bashrc"
 echo ""
-echo "请执行以下命令之一来使配置生效："
-echo "  1. 运行: source ~/.bashrc"
-echo "  2. 或者重新打开终端"
+echo "Please execute one of the following commands to apply the configuration:"
+echo "  1. Run: source ~/.bashrc"
+echo "  2. Or reopen the terminal"
 echo ""
-echo "然后运行以下命令验证 CUDA 是否可用："
+echo "Then run the following command to verify CUDA is available:"
 echo "  nvcc --version"
 echo ""
 

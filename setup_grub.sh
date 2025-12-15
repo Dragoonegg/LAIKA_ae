@@ -1,143 +1,143 @@
 #!/bin/bash
-# 设置GRUB默认启动项为6.0-lake内核并添加内核参数
+# Set GRUB default boot entry to 6.0-lake kernel and add kernel parameters
 
-set -e  # 遇到错误时退出
+set -e  # Exit on error
 
-echo "=== 步骤1: 提取高级菜单ID和6.0-lake内核ID ==="
+echo "=== Step 1: Extract advanced menu ID and 6.0-lake kernel ID ==="
 
-# 提取高级菜单ID（从submenu行中提取最后一个单引号中的内容，通常是ID）
+# Extract advanced menu ID (extract content from last single quotes in submenu line, usually the ID)
 SUBMENU_LINE=$(cat /boot/grub/grub.cfg | grep submenu | head -1)
 if [ -z "$SUBMENU_LINE" ]; then
-    echo "错误: 无法找到submenu行"
+    echo "Error: Unable to find submenu line"
     exit 1
 fi
-echo "找到submenu行: $SUBMENU_LINE"
+echo "Found submenu line: $SUBMENU_LINE"
 
-# 提取ID（通常是最后一个单引号中的内容，格式如 gnulinux-advanced-...）
+# Extract ID (usually content from last single quotes, format like gnulinux-advanced-...)
 ADVANCED_MENU_ID=$(echo "$SUBMENU_LINE" | grep -o "'[^']*'" | tail -1 | tr -d "'")
 if [ -z "$ADVANCED_MENU_ID" ] || [[ ! "$ADVANCED_MENU_ID" =~ ^gnulinux- ]]; then
-    # 如果最后一个不是ID，尝试查找包含gnulinux-advanced的
+    # If the last one is not an ID, try to find one containing gnulinux-advanced
     ADVANCED_MENU_ID=$(echo "$SUBMENU_LINE" | grep -o "gnulinux-advanced-[^' ]*" | head -1)
 fi
 if [ -z "$ADVANCED_MENU_ID" ]; then
-    echo "错误: 无法从submenu行中提取高级菜单ID"
+    echo "Error: Unable to extract advanced menu ID from submenu line"
     exit 1
 fi
-echo "高级菜单ID: $ADVANCED_MENU_ID"
+echo "Advanced menu ID: $ADVANCED_MENU_ID"
 
-# 提取6.0-lake内核ID（按照用户说明：grep option | grep 6.0.0-lake）
+# Extract 6.0-lake kernel ID (as per user instructions: grep option | grep 6.0.0-lake)
 OPTION_LAKE_LINE=$(cat /boot/grub/grub.cfg | grep option | grep "6.0.*lake" | head -1)
 if [ -z "$OPTION_LAKE_LINE" ]; then
-    echo "错误: 无法找到包含'option'和'6.0.*lake'的行"
-    echo "尝试查找包含'6.0'和'lake'的menuentry行..."
+    echo "Error: Unable to find line containing 'option' and '6.0.*lake'"
+    echo "Trying to find menuentry line containing '6.0' and 'lake'..."
     OPTION_LAKE_LINE=$(cat /boot/grub/grub.cfg | grep -i "6.0.*lake" | head -1)
 fi
 if [ -z "$OPTION_LAKE_LINE" ]; then
-    echo "错误: 无法找到6.0-lake内核相关行"
+    echo "Error: Unable to find 6.0-lake kernel related line"
     exit 1
 fi
-echo "找到6.0-lake行: $OPTION_LAKE_LINE"
+echo "Found 6.0-lake line: $OPTION_LAKE_LINE"
 
-# 提取ID（查找包含gnulinux和lake的ID）
+# Extract ID (find ID containing gnulinux and lake)
 LAKE_KERNEL_ID=$(echo "$OPTION_LAKE_LINE" | grep -o "gnulinux-[^' ]*lake[^' ]*" | head -1)
 if [ -z "$LAKE_KERNEL_ID" ]; then
-    # 尝试从最后一个单引号中提取
+    # Try to extract from last single quotes
     LAKE_KERNEL_ID=$(echo "$OPTION_LAKE_LINE" | grep -o "'[^']*'" | tail -1 | tr -d "'")
 fi
 if [ -z "$LAKE_KERNEL_ID" ]; then
-    echo "错误: 无法提取6.0-lake内核ID"
+    echo "Error: Unable to extract 6.0-lake kernel ID"
     exit 1
 fi
-echo "6.0-lake内核ID: $LAKE_KERNEL_ID"
+echo "6.0-lake kernel ID: $LAKE_KERNEL_ID"
 
 echo ""
-echo "=== 步骤2: 组合菜单ID ==="
+echo "=== Step 2: Combine menu IDs ==="
 GRUB_DEFAULT_VALUE="${ADVANCED_MENU_ID}>${LAKE_KERNEL_ID}"
-echo "组合后的GRUB_DEFAULT值: $GRUB_DEFAULT_VALUE"
+echo "Combined GRUB_DEFAULT value: $GRUB_DEFAULT_VALUE"
 
 echo ""
-echo "=== 步骤3: 更新 /etc/default/grub - 添加GRUB_DEFAULT ==="
+echo "=== Step 3: Update /etc/default/grub - Add GRUB_DEFAULT ==="
 
-# 备份原始文件
+# Backup original file
 sudo cp /etc/default/grub /etc/default/grub.backup.$(date +%Y%m%d_%H%M%S)
-echo "已备份 /etc/default/grub"
+echo "Backed up /etc/default/grub"
 
-# 检查是否已存在GRUB_DEFAULT
+# Check if GRUB_DEFAULT already exists
 if grep -q "^GRUB_DEFAULT=" /etc/default/grub; then
-    # 如果存在，更新它
-    echo "更新现有的GRUB_DEFAULT..."
+    # If exists, update it
+    echo "Updating existing GRUB_DEFAULT..."
     sudo sed -i "s|^GRUB_DEFAULT=.*|GRUB_DEFAULT=\"${GRUB_DEFAULT_VALUE}\"|" /etc/default/grub
 else
-    # 如果不存在，在文件顶部添加
-    echo "在文件顶部添加GRUB_DEFAULT..."
+    # If not exists, add it at the top of the file
+    echo "Adding GRUB_DEFAULT at the top of the file..."
     sudo sed -i "1i GRUB_DEFAULT=\"${GRUB_DEFAULT_VALUE}\"" /etc/default/grub
 fi
 
 echo ""
-echo "=== 步骤4: 更新GRUB_CMDLINE_LINUX_DEFAULT ==="
+echo "=== Step 4: Update GRUB_CMDLINE_LINUX_DEFAULT ==="
 
 KERNEL_PARAMS="cma=128M@0-4G log_buf_len=16M"
 
-# 检查GRUB_CMDLINE_LINUX_DEFAULT是否存在
+# Check if GRUB_CMDLINE_LINUX_DEFAULT exists
 if grep -q "^GRUB_CMDLINE_LINUX_DEFAULT=" /etc/default/grub; then
-    # 如果存在，检查是否已包含这些参数
+    # If exists, check if it already contains these parameters
     CURRENT_CMDLINE=$(grep "^GRUB_CMDLINE_LINUX_DEFAULT=" /etc/default/grub | sed 's/^GRUB_CMDLINE_LINUX_DEFAULT="\(.*\)"/\1/')
     
-    # 检查是否需要添加参数
+    # Check if parameters need to be added
     if echo "$CURRENT_CMDLINE" | grep -q "cma=128M@0-4G" && echo "$CURRENT_CMDLINE" | grep -q "log_buf_len=16M"; then
-        echo "内核参数已存在，无需更新"
+        echo "Kernel parameters already exist, no update needed"
     else
-        echo "更新GRUB_CMDLINE_LINUX_DEFAULT，添加新参数..."
-        # 移除引号，添加新参数，然后重新添加引号
+        echo "Updating GRUB_CMDLINE_LINUX_DEFAULT, adding new parameters..."
+        # Remove quotes, add new parameters, then re-add quotes
         NEW_CMDLINE="${CURRENT_CMDLINE} ${KERNEL_PARAMS}"
         sudo sed -i "s|^GRUB_CMDLINE_LINUX_DEFAULT=.*|GRUB_CMDLINE_LINUX_DEFAULT=\"${NEW_CMDLINE}\"|" /etc/default/grub
     fi
 else
-    # 如果不存在，创建它
-    echo "创建GRUB_CMDLINE_LINUX_DEFAULT..."
-    # 在GRUB_DEFAULT之后添加
+    # If not exists, create it
+    echo "Creating GRUB_CMDLINE_LINUX_DEFAULT..."
+    # Add after GRUB_DEFAULT
     sudo sed -i "/^GRUB_DEFAULT=/a GRUB_CMDLINE_LINUX_DEFAULT=\"${KERNEL_PARAMS}\"" /etc/default/grub
 fi
 
 echo ""
-echo "=== 步骤5: 更新GRUB_TIMEOUT_STYLE和GRUB_TIMEOUT ==="
+echo "=== Step 5: Update GRUB_TIMEOUT_STYLE and GRUB_TIMEOUT ==="
 
-# 更新GRUB_TIMEOUT_STYLE
+# Update GRUB_TIMEOUT_STYLE
 if grep -q "^GRUB_TIMEOUT_STYLE=" /etc/default/grub; then
-    echo "更新现有的GRUB_TIMEOUT_STYLE..."
+    echo "Updating existing GRUB_TIMEOUT_STYLE..."
     sudo sed -i "s|^GRUB_TIMEOUT_STYLE=.*|GRUB_TIMEOUT_STYLE=show|" /etc/default/grub
 else
-    echo "创建GRUB_TIMEOUT_STYLE..."
-    # 在GRUB_CMDLINE_LINUX_DEFAULT之后添加
+    echo "Creating GRUB_TIMEOUT_STYLE..."
+    # Add after GRUB_CMDLINE_LINUX_DEFAULT
     sudo sed -i "/^GRUB_CMDLINE_LINUX_DEFAULT=/a GRUB_TIMEOUT_STYLE=show" /etc/default/grub
 fi
 
-# 更新GRUB_TIMEOUT
+# Update GRUB_TIMEOUT
 if grep -q "^GRUB_TIMEOUT=" /etc/default/grub; then
-    echo "更新现有的GRUB_TIMEOUT..."
+    echo "Updating existing GRUB_TIMEOUT..."
     sudo sed -i "s|^GRUB_TIMEOUT=.*|GRUB_TIMEOUT=5|" /etc/default/grub
 else
-    echo "创建GRUB_TIMEOUT..."
-    # 在GRUB_TIMEOUT_STYLE之后添加
+    echo "Creating GRUB_TIMEOUT..."
+    # Add after GRUB_TIMEOUT_STYLE
     sudo sed -i "/^GRUB_TIMEOUT_STYLE=/a GRUB_TIMEOUT=5" /etc/default/grub
 fi
 
 echo ""
-echo "=== 步骤6: 更新GRUB配置 ==="
-echo "正在运行 sudo update-grub..."
+echo "=== Step 6: Update GRUB configuration ==="
+echo "Running sudo update-grub..."
 sudo update-grub
 
 echo ""
-echo "=== 完成 ==="
+echo "=== Complete ==="
 echo ""
-echo "已成功配置GRUB："
+echo "Successfully configured GRUB:"
 echo "  - GRUB_DEFAULT: $GRUB_DEFAULT_VALUE"
-echo "  - GRUB_CMDLINE_LINUX_DEFAULT: 已添加 cma=128M@0-4G log_buf_len=16M"
+echo "  - GRUB_CMDLINE_LINUX_DEFAULT: Added cma=128M@0-4G log_buf_len=16M"
 echo "  - GRUB_TIMEOUT_STYLE: show"
 echo "  - GRUB_TIMEOUT: 5"
 echo ""
-echo "请重启系统，然后运行以下命令验证："
+echo "Please reboot the system, then run the following command to verify:"
 echo "  uname -r"
 echo ""
-echo "如果显示的内核版本包含'6.0'和'lake'，则配置成功！"
+echo "If the displayed kernel version contains '6.0' and 'lake', the configuration is successful!"
 

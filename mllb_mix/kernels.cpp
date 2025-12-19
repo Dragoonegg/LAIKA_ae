@@ -70,8 +70,8 @@ void mllb_infer_v2(float* inputs,
 {   
     int tid = blockIdx.x * blockDim.x + threadIdx.x;
     
-    if (tid < 65536) {  // 支持最大batch_size
-        float* input = inputs + tid * 15;  // 每个输入15个特征
+    if (tid < 65536) {  // Support maximum batch_size
+        float* input = inputs + tid * 15;  // Each input has 15 features
         
        
         float hidden[10] = {0};
@@ -102,15 +102,15 @@ __global__ __launch_bounds__(256) void mllb_persistent_infer(
     int* task_flag, int* quit_flag, int* batch_size)
 {   
     while (true) {
-        // 只在需要时进行内存屏障
+        // Only perform memory barrier when needed
         __threadfence_system();
         if (*quit_flag) break;
         if (*task_flag == 1) {
             int bs = *batch_size;
-            // 这里可以用 block/thread 分配处理任务
+            // Block/thread can be used to assign processing tasks here
             int tid = blockIdx.x * blockDim.x + threadIdx.x;
             for (int i = tid; i < bs; i += gridDim.x * blockDim.x) {
-                // 处理第i个输入
+                // Process the i-th input
                 float* input = inputs + i * NR_FEAT;
                 float acc[10] = {0};
                 for (int j = 0; j < 10; ++j) {
@@ -127,20 +127,20 @@ __global__ __launch_bounds__(256) void mllb_persistent_infer(
             }
             __syncthreads();
             if (tid == 0) {
-                *task_flag = 0; // 通知host已完成
-                 // 确保flag更新对host可见
+                *task_flag = 0; // Notify host that task is completed
+                 // Ensure flag update is visible to host
             }
         }
         else{
             //__threadfence_system(); 
             __builtin_amdgcn_s_sleep(10000);        
         }
-        // 减少内存屏障频率，只在必要时使用
+        // Reduce memory barrier frequency, only use when necessary
         
     }
 }
 
-// 可按需调整
+// Can be adjusted as needed
 #ifndef MIN_SLEEP_CYCLES
 #define MIN_SLEEP_CYCLES    1024    // 1k cycles
 #endif
@@ -151,10 +151,10 @@ __global__ __launch_bounds__(256) void mllb_persistent_infer(
 #define BACKOFF_FACTOR      4
 #endif
 #ifndef IDLE_SPIN_TRIES
-#define IDLE_SPIN_TRIES     8       // 空闲时先做几次轻量轮询以降低唤醒延迟
+#define IDLE_SPIN_TRIES     8       // Do a few light-weight polls when idle to reduce wake-up latency
 #endif
 
-// 等待未完成的内存事务（等价于 s_waitcnt vmcnt(0) 等）
+// Wait for incomplete memory transactions (equivalent to s_waitcnt vmcnt(0) etc.)
 __device__ __forceinline__ void wait_vmem_all_complete() {
 #if defined(__HIP_PLATFORM_AMD__)
     __builtin_amdgcn_s_waitcnt(0);
@@ -168,7 +168,7 @@ void mllb_persistent_infer_2(
 {
     const int tid = blockIdx.x * blockDim.x + threadIdx.x;
 
-    // 共享变量：只让一个线程读全局标志，然后广播，减少总线压力
+    // Shared variables: only let one thread read global flags, then broadcast to reduce bus pressure
     __shared__ int s_quit;
     __shared__ int s_has_work;
     __shared__ int s_bs;
@@ -176,26 +176,26 @@ void mllb_persistent_infer_2(
     int sleep_cycles = MIN_SLEEP_CYCLES;
 
     while (true) {
-        // --- 1) 由块内 leader 读标志并广播 ---
+        // --- 1) Block leader reads flags and broadcasts ---
         if (threadIdx.x == 0) {
-            wait_vmem_all_complete();        // 收敛内存事务后再读标志
+            wait_vmem_all_complete();        // Converge memory transactions before reading flags
             s_quit     = *quit_flag;
             s_has_work = (*task_flag == 1);
-            s_bs       = s_has_work ? *batch_size : 0;  // 仅有任务时才取 batch
+            s_bs       = s_has_work ? *batch_size : 0;  // Only fetch batch when there is a task
         }
         __syncthreads();
 
         if (s_quit) break;
 
         if (s_has_work) {
-            // --- 2) 有任务：重置退避并执行计算 ---
+            // --- 2) Has task: reset backoff and execute computation ---
             sleep_cycles = MIN_SLEEP_CYCLES;
 
             const int bs = s_bs;
             for (int i = tid; i < bs; i += gridDim.x * blockDim.x) {
                 float* input = inputs + i * NR_FEAT;
 
-                // 第一层：NR_FEAT x 10 + ReLU
+                // First layer: NR_FEAT x 10 + ReLU
                 float acc[10];
 #pragma unroll
                 for (int j = 0; j < 10; ++j) acc[j] = 0.0f;
@@ -214,7 +214,7 @@ void mllb_persistent_infer_2(
                     acc[j] = (v > 0.0f) ? v : 0.0f;
                 }
 
-                // 第二层：10 -> 1
+                // Second layer: 10 -> 1
                 float out = 0.0f;
 #pragma unroll
                 for (int j = 0; j < 10; ++j) out += acc[j] * w2[j];
@@ -225,15 +225,15 @@ void mllb_persistent_infer_2(
 
             __syncthreads();
 
-            // 完成通知与可见性保障：只做必要的系统栅栏
+            // Completion notification and visibility guarantee: only perform necessary system fences
             if (tid == 0) {
-                __threadfence_system();   // 先确保 results 可见
-                *task_flag = 0;           // 再置 0 通知 host 完成
-                __threadfence_system();   // 可选：再做一次，巩固“先写数据后清旗”
+                __threadfence_system();   // First ensure results are visible
+                *task_flag = 0;           // Then set to 0 to notify host of completion
+                __threadfence_system();   // Optional: do once more to reinforce "write data before clearing flag"
             }
         } else {
-            // --- 3) 无任务：短轮询 + s_sleep 指数退避 ---
-            // 为了降低被 host 置位后的感知延迟，先快速检查几次
+            // --- 3) No task: short polling + s_sleep exponential backoff ---
+            // To reduce perceived latency after host sets flag, quickly check a few times first
             bool observed = false;
             for (int t = 0; t < IDLE_SPIN_TRIES; ++t) {
                 if (threadIdx.x == 0) {
@@ -246,32 +246,32 @@ void mllb_persistent_infer_2(
             }
 
             if (observed) {
-                // 发现有任务，立即重置退避，进入下一轮处理
+                // Task found, immediately reset backoff and proceed to next round
                 sleep_cycles = MIN_SLEEP_CYCLES;
                 continue;
             }
 
-            // 仍然没有任务：进入短睡眠并指数退避
+            // Still no task: enter short sleep with exponential backoff
             wait_vmem_all_complete();
 #if defined(__HIP_PLATFORM_AMD__)
-            // 使用循环实现睡眠，因为 __builtin_amdgcn_s_sleep 需要常量参数
-            // 将 sleep_cycles 分解为多个固定大小的睡眠周期
+            // Use loop to implement sleep, as __builtin_amdgcn_s_sleep requires constant parameter
+            // Decompose sleep_cycles into multiple fixed-size sleep cycles
             int remaining = sleep_cycles;
             while (remaining >= 1024) {
                 __builtin_amdgcn_s_sleep(1024);
                 remaining -= 1024;
             }
             if (remaining > 0) {
-                // 对于剩余的小于1024的周期，使用一个较小的固定值
+                // For remaining cycles less than 1024, use a smaller fixed value
                 __builtin_amdgcn_s_sleep(512);
             }
 #else
-            // 其他平台可替换为 __nanosleep 或空转（退化方案）
+            // Other platforms can replace with __nanosleep or idle loop (fallback solution)
 #endif
             long next = (long)sleep_cycles * BACKOFF_FACTOR;
             sleep_cycles = (next > MAX_SLEEP_CYCLES) ? MAX_SLEEP_CYCLES : (int)next;
         }
-        // 下一轮
+        // Next round
     }
 }
 
@@ -284,7 +284,7 @@ void mllb_persistent_infer_2(
 #define WAVES_MAX 2
 #endif
 
-// 约束寄存器/占用率：每块 128 线程，至少能并发 2 块
+// Constrain registers/occupancy: 128 threads per block, at least 2 blocks can run concurrently
 __launch_bounds__(256, 2)
 __attribute__((amdgpu_waves_per_eu(WAVES_MIN, WAVES_MAX)))
 __global__
@@ -301,10 +301,10 @@ void mllb_persistent_infer_2_opt(
 {
     const int tid = blockIdx.x * blockDim.x + threadIdx.x;
 
-    // 共享状态：leader 轮询并广播
+    // Shared state: leader polls and broadcasts
     __shared__ int s_quit, s_has_work, s_bs;
 
-    // 将 b1/w2 拷到 LDS（一次/任务），并填充到 16 长度方便向量化
+    // Copy b1/w2 to LDS (once per task), and pad to 16 length for vectorization convenience
     __shared__ float s_b1[16];
     __shared__ float s_w2[16];
 
@@ -313,7 +313,7 @@ void mllb_persistent_infer_2_opt(
     while (true) {
         if (threadIdx.x == 0) {
             wait_vmem_all_complete();
-            // 用“获取”语义读，防止过期缓存（HIP/Clang 下 volatile 已经很好用）
+            // Read with "acquire" semantics to prevent stale cache (volatile works well under HIP/Clang)
             s_quit = *quit_flag;
             int has = (*task_flag == 1);
             s_has_work = has;
@@ -325,7 +325,7 @@ void mllb_persistent_infer_2_opt(
         if (s_has_work) {
             sleep_cycles = MIN_SLEEP_CYCLES;
 
-            // 仅一次将 b1/w2 进 LDS；10..15 置 0，避免分支
+            // Load b1/w2 into LDS only once; set 10..15 to 0 to avoid branches
             if (threadIdx.x < 16) {
                 s_b1[threadIdx.x] = (threadIdx.x < 10) ? b1[threadIdx.x] : 0.0f;
                 s_w2[threadIdx.x] = (threadIdx.x < 10) ? w2[threadIdx.x] : 0.0f;
@@ -338,24 +338,24 @@ void mllb_persistent_infer_2_opt(
             for (int i = tid; i < bs; i += stride) {
                 const float* __restrict__ x = inputs + i * NR_FEAT;
 
-                // 10 维隐藏层累加器，放寄存器
+                // 10-dimensional hidden layer accumulators, stored in registers
                 float acc0 = 0, acc1 = 0, acc2 = 0, acc3 = 0, acc4 = 0;
                 float acc5 = 0, acc6 = 0, acc7 = 0, acc8 = 0, acc9 = 0;
 
-                // k 主循环：4 个特征一组（float4）
+                // k main loop: 4 features per group (float4)
                 int k = 0;
 #pragma unroll 2
                 for (; k + 3 < NR_FEAT; k += 4) {
-                    // 批量取 4 个输入（自然对齐下编译器会生成 vector load）
+                    // Batch load 4 inputs (compiler will generate vector load under natural alignment)
                     float4 xv = *reinterpret_cast<const float4*>(x + k);
-                    // 每个特征对应 10 个权重：w1[(k+p)*10 + j] 连续内存，cache 友好
+                    // Each feature corresponds to 10 weights: w1[(k+p)*10 + j] contiguous memory, cache-friendly
 #pragma unroll
                     for (int j = 0; j < 10; ++j) {
                         float w0 = w1[(k + 0) * 10 + j];
                         float w1v = w1[(k + 1) * 10 + j];
                         float w2v = w1[(k + 2) * 10 + j];
                         float w3v = w1[(k + 3) * 10 + j];
-                        // 展开到 10 条 acc 上；fmaf 生成 FMA
+                        // Unroll onto 10 acc registers; fmaf generates FMA
                         switch (j) {
                             case 0:  acc0 = fmaf(xv.x, w0, acc0); acc0 = fmaf(xv.y, w1v, acc0); acc0 = fmaf(xv.z, w2v, acc0); acc0 = fmaf(xv.w, w3v, acc0); break;
                             case 1:  acc1 = fmaf(xv.x, w0, acc1); acc1 = fmaf(xv.y, w1v, acc1); acc1 = fmaf(xv.z, w2v, acc1); acc1 = fmaf(xv.w, w3v, acc1); break;
@@ -370,7 +370,7 @@ void mllb_persistent_infer_2_opt(
                         }
                     }
                 }
-                // 处理尾部（0~3 个特征）
+                // Handle tail (0~3 features)
                 for (; k < NR_FEAT; ++k) {
                     float xk = x[k];
                     acc0 = fmaf(xk, w1[k*10 + 0], acc0);
@@ -385,7 +385,7 @@ void mllb_persistent_infer_2_opt(
                     acc9 = fmaf(xk, w1[k*10 + 9], acc9);
                 }
 
-                // 加偏置 + ReLU（用 LDS 中的 b1）
+                // Add bias + ReLU (using b1 in LDS)
                 acc0 = fmaxf(acc0 + s_b1[0], 0.0f);
                 acc1 = fmaxf(acc1 + s_b1[1], 0.0f);
                 acc2 = fmaxf(acc2 + s_b1[2], 0.0f);
@@ -397,7 +397,7 @@ void mllb_persistent_infer_2_opt(
                 acc8 = fmaxf(acc8 + s_b1[8], 0.0f);
                 acc9 = fmaxf(acc9 + s_b1[9], 0.0f);
 
-                // 第二层点积（w2 在 LDS）
+                // Second layer dot product (w2 in LDS)
                 float out =
                     acc0 * s_w2[0] + acc1 * s_w2[1] + acc2 * s_w2[2] +
                     acc3 * s_w2[3] + acc4 * s_w2[4] + acc5 * s_w2[5] +
@@ -409,12 +409,12 @@ void mllb_persistent_infer_2_opt(
 
             __syncthreads();
             if (tid == 0) {
-                __threadfence_system();          // 先保证 results 可见
-                atomicExch((int*)task_flag, 0);  // 再清旗（release）
-                // 通常无需第二次 threadfence；Host 侧读旗后再读结果要用 acquire
+                __threadfence_system();          // First ensure results are visible
+                atomicExch((int*)task_flag, 0);  // Then clear flag (release)
+                // Usually no need for second threadfence; Host side should use acquire after reading flag before reading results
             }
         } else {
-            // 无任务：短轮询 + 指数退避
+            // No task: short polling + exponential backoff
             bool observed = false;
 #pragma unroll
             for (int t = 0; t < IDLE_SPIN_TRIES; ++t) {
@@ -431,14 +431,14 @@ void mllb_persistent_infer_2_opt(
 
             wait_vmem_all_complete();
 #if defined(__HIP_PLATFORM_AMD__)
-            // 精确睡眠：把剩余周期分段消化
+            // Precise sleep: digest remaining cycles in segments
             int remaining = sleep_cycles;
             while (remaining >= 1024) { __builtin_amdgcn_s_sleep(1024); remaining -= 1024; }
             if (remaining >= 512)      { __builtin_amdgcn_s_sleep(512);  remaining -= 512;  }
             if (remaining >= 256)      { __builtin_amdgcn_s_sleep(256);  remaining -= 256;  }
-            if (remaining > 0)         { __builtin_amdgcn_s_sleep(64); } // 收个尾
+            if (remaining > 0)         { __builtin_amdgcn_s_sleep(64); } // Finish up
 #else
-            // 其他平台：可换 __nanosleep 或空转
+            // Other platforms: can replace with __nanosleep or idle loop
 #endif
             long next = (long)sleep_cycles * BACKOFF_FACTOR;
             sleep_cycles = (next > MAX_SLEEP_CYCLES) ? MAX_SLEEP_CYCLES : (int)next;

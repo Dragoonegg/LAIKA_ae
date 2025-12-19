@@ -35,7 +35,7 @@
 #include <linux/vmalloc.h>
 #include <asm/fpu/api.h>
 #else
-//if uspace
+// if userspace
 #include <stdint.h>
 #include <stdio.h>
 #include <unistd.h>
@@ -161,8 +161,8 @@ static int run_cpu(int* batch_sizes, int n_batches, int max_batch, int RUNS, int
         for (j = 0 ; j < RUNS ; j++) {
             t_start = ktime_get_ns();
             for (k = 0 ; k < batch_size ; k++) {
-                // // 打印 inputs+k 的内容
-                // PRINT(V_INFO, "Inputs[%d] 矩阵内容 (nrow=%d, ncol=%d): ", k, inputs[k].nrow, inputs[k].ncol);
+                // // Print contents of inputs+k
+                // PRINT(V_INFO, "Inputs[%d] matrix content (nrow=%d, ncol=%d): ", k, inputs[k].nrow, inputs[k].ncol);
                 // for (int feat = 0; feat < NR_FEAT; feat++) {
                 //     PRINT(V_INFO, "%.6f ", inputs[k].values[feat]);
                 // }
@@ -294,9 +294,9 @@ static int run_apu_zerocopy(int* batch_sizes, int n_batches, int max_batch, int 
     hipCtx_t cuctx;
     hipFunction_t batch_mllb_kernel;
     void *d_inputs, *d_w1, *d_b1, *d_w2, *d_results;
-    void *h_inputs_mapped; // 新增：映射的主机内存
-    void *d_inputs_mapped; // 新增：对应的设备指针
-    // --- zerocopy 结果输出 ---
+    void *h_inputs_mapped; // New: mapped host memory
+    void *d_inputs_mapped; // New: corresponding device pointer
+    // --- zerocopy result output ---
     void *h_results_mapped;
     void *d_results_mapped;
     gpu_init(0, &cuctx);
@@ -309,16 +309,16 @@ static int run_apu_zerocopy(int* batch_sizes, int n_batches, int max_batch, int 
     hipHostRegister(h_results_mapped, max_batch * sizeof(float),hipHostRegisterMapped | hipExtHostRegisterCoarseGrained);
     hipHostGetDevicePointer(&d_results_mapped, h_results_mapped, 0);
         
-    linear_inputs = (int*)h_inputs_mapped; // 使用映射的内存
-    // PRINT(V_INFO, "=== 内存映射指针值 ===\n");
-    // PRINT(V_INFO, "h_inputs_mapped (主机指针): %p\n", h_inputs_mapped);
-    // PRINT(V_INFO, "d_inputs_mapped (设备指针): %p\n", d_inputs_mapped);
-    // PRINT(V_INFO, "linear_inputs (int* 视图): %p\n", linear_inputs);
-    // PRINT(V_INFO, "内存大小: %lu 字节 (%d * %d * %lu)\n", 
+    linear_inputs = (int*)h_inputs_mapped; // Use mapped memory
+    // PRINT(V_INFO, "=== Memory mapping pointer values ===\n");
+    // PRINT(V_INFO, "h_inputs_mapped (host pointer): %p\n", h_inputs_mapped);
+    // PRINT(V_INFO, "d_inputs_mapped (device pointer): %p\n", d_inputs_mapped);
+    // PRINT(V_INFO, "linear_inputs (int* view): %p\n", linear_inputs);
+    // PRINT(V_INFO, "Memory size: %lu bytes (%d * %d * %lu)\n", 
     //        (unsigned long)(NR_FEAT * max_batch * sizeof(float)), 
     //        NR_FEAT, max_batch, sizeof(float));
-    // PRINT(V_INFO, "=== 指针值打印完成 ===\n\n");
-    //创建一个线性矩阵，并填充随机数
+    // PRINT(V_INFO, "=== Pointer value printing completed ===\n\n");
+    // Create a linear matrix and fill with random numbers
     for (j = 0 ; j < max_batch*NR_FEAT ; j++) {
         linear_inputs[j] = rand_floats_as_int[rand_counter];
         //PRINT(V_INFO, "linear_inputs[%d]=%d\n", j, linear_inputs[j]);
@@ -334,20 +334,20 @@ static int run_apu_zerocopy(int* batch_sizes, int n_batches, int max_batch, int 
  
 
     for (i = 0 ; i < n_batches ; i++) {
-        //对每个batch大小，获取一个batch大小的d_results，并设置输入矩阵，并拷贝到GPU
+        // For each batch size, get a d_results of batch size, set input matrix, and copy to GPU
         batch_size = batch_sizes[i];
         gpu_setup_zerocopy(batch_size, &d_w1, &d_b1, &d_w2);
         
         for (j = 0 ; j < RUNS ; j++) {
             t_start = ktime_get_ns();  
             int threadsPerBlock = 128;
-            int blocks = (batch_size + threadsPerBlock - 1) / threadsPerBlock;  // 根据batch_size计算blocks
+            int blocks = (batch_size + threadsPerBlock - 1) / threadsPerBlock;  // Calculate blocks based on batch_size
             if (blocks == 0) blocks = 1;
-            void* args[] = { &d_inputs_mapped, &d_w1, &d_b1, &d_w2, &b2, &d_results_mapped}; // 使用映射的设备指针
+            void* args[] = { &d_inputs_mapped, &d_w1, &d_b1, &d_w2, &b2, &d_results_mapped}; // Use mapped device pointer
             check_error(hipModuleLaunchKernel(batch_mllb_kernel, 
                 blocks, 1, 1,      //blocks
                 threadsPerBlock, 1, 1,          //threads per block
-                0, //shared mem - 不需要共享内存
+                0, //shared mem - no shared memory needed
                 NULL, args, NULL),
             "hipModuleLaunchKernel", __LINE__);
             hipDeviceSynchronize();
@@ -358,16 +358,16 @@ static int run_apu_zerocopy(int* batch_sizes, int n_batches, int max_batch, int 
         // //do just computation
         // for (j = 0 ; j < RUNS; j++) {
         //     int threadsPerBlock = 128;
-        //     int blocks = (batch_size + threadsPerBlock - 1) / threadsPerBlock;  // 根据batch_size计算blocks
+        //     int blocks = (batch_size + threadsPerBlock - 1) / threadsPerBlock;  // Calculate blocks based on batch_size
         //     if (blocks == 0) blocks = 1;
 
-        //     void* args[] = { &d_inputs_mapped, &d_w1, &d_b1, &d_w2, &b2, &d_results_mapped }; // 使用映射的设备指针
+        //     void* args[] = { &d_inputs_mapped, &d_w1, &d_b1, &d_w2, &b2, &d_results_mapped }; // Use mapped device pointer
             
         //     c_start = ktime_get_ns();
         //     check_error(hipModuleLaunchKernel(batch_mllb_kernel, 
 		// 		blocks, 1, 1,      //blocks
 		// 		threadsPerBlock, 1, 1,          //threads per block
-		// 		0, //shared mem - 不需要共享内存
+		// 		0, //shared mem - no shared memory needed
         //         NULL, args, NULL),
 		// 	"hipModuleLaunchKernel", __LINE__);
         //     hipDeviceSynchronize();
@@ -383,20 +383,20 @@ static int run_apu_zerocopy(int* batch_sizes, int n_batches, int max_batch, int 
             avg_total += total_run_times[j];
            
         }
-        avg = avg / (1000*RUNS);  // 将纳秒转换为微秒
-        avg_total = avg_total / (1000*RUNS);  // 将纳秒转换为微秒
+        avg = avg / (1000*RUNS);  // Convert nanoseconds to microseconds
+        avg_total = avg_total / (1000*RUNS);  // Convert nanoseconds to microseconds
   
         PRINT(V_INFO, "MLLB_APU_PL_batch_%d, %lu\n", batch_size,  avg_total);
         //  if (h_results_mapped != NULL && batch_size > 0) {
         //     float* results_view = (float*)h_results_mapped;
         //     float sum = 0.0f;
             
-        //     // 将所有元素相加
+        //     // Sum all elements
         //     for (int pi = 0; pi < batch_size; ++pi) {
         //         sum += results_view[pi];
         //     }
             
-        //     PRINT(V_INFO, "[Batch %d] h_results_mapped 所有元素总和: %.6f\n", batch_size, sum);
+        //     PRINT(V_INFO, "[Batch %d] h_results_mapped sum of all elements: %.6f\n", batch_size, sum);
         // } else {
         //     PRINT(V_INFO, "[Batch %d] d_result allocation failed or batch_size invalid\n", batch_size);
         // }
@@ -407,7 +407,7 @@ static int run_apu_zerocopy(int* batch_sizes, int n_batches, int max_batch, int 
     
     
 
-    // 释放映射的内存
+    // Free mapped memory
     hipHostUnregister(h_inputs_mapped);
     hipHostUnregister(h_results_mapped);
     kava_free(h_inputs_mapped);
@@ -467,7 +467,7 @@ static int run_apu_persistent(int* batch_sizes, int n_batches, int max_batch, in
         for (int z = 0; z < n_batches&&batch_sizes[z]<=4096; z++)
         {
         *h_task_flag = 0; *h_quit_flag = 0; *h_batch_size = 0;
-         // 启动persistent kernel
+         // Launch persistent kernel
         hipStream_t stream1;
         #ifdef __KERNEL__
         check_error(hipStreamCreate(&stream1,0), "hipStreamCreate1", __LINE__);
@@ -493,14 +493,14 @@ static int run_apu_persistent(int* batch_sizes, int n_batches, int max_batch, in
                 if (rand_counter == 4) rand_counter = 0;
             }
 
-    // 添加内存屏障确保数据一致性
+    // Add memory barrier to ensure data consistency
     #ifdef __KERNEL__
     mb();
     #else
     __sync_synchronize();
     #endif
 
-    //热身
+    // Warmup
     for (int j = 0 ; j < 10000; j++) { 
         *h_task_flag = 1;
         while (*h_task_flag == 1) {}
@@ -510,7 +510,7 @@ static int run_apu_persistent(int* batch_sizes, int n_batches, int max_batch, in
         *h_task_flag = 1;
         while (*h_task_flag == 1) {}
         t_stop = ktime_get_ns();
-        total_run_times[j] = t_stop-t_start; // 只计算等待时间
+        total_run_times[j] = t_stop-t_start; // Only calculate wait time
     }
     
  
@@ -522,11 +522,11 @@ static int run_apu_persistent(int* batch_sizes, int n_batches, int max_batch, in
     for (int j = 0 ; j < RUNS ; j++) {
         avg_total += total_run_times[j];
         }
-    avg_total = avg_total / (1000*RUNS);  // 将纳秒转换为微秒
+    avg_total = avg_total / (1000*RUNS);  // Convert nanoseconds to microseconds
     PRINT(V_INFO, "MLLB_APU_PK_batch_%d,%lu\n", batch_size, avg_total);
     }
         
-    // 释放资源
+    // Free resources
     hipHostUnregister(h_inputs); 
     hipHostUnregister(h_results);
     hipHostUnregister(h_task_flag); 
@@ -568,7 +568,7 @@ static int __init mllb_init(void)
 
 static void __exit mllb_fini(void)
 {
-    //cleanup
+    // cleanup
 }
 
 module_init(mllb_init);

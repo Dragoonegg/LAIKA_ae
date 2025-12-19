@@ -88,7 +88,7 @@ void gpu_get_cufunc(const char* cubin, const char* kname, hipFunction_t *func) {
 void gpu_setup(int n_inputs, void **d_inputs, void **d_w1, void **d_b1, void **d_w2, void **d_results) {
     hipError_t res;
     
-    // 不再分配 d_inputs，因为使用映射内存
+    // Do not allocate d_inputs, as mapped memory is used
     // res = hipMalloc(d_inputs, n_inputs*NR_FEAT*sizeof(float));
     // check_error(res, "hipMalloc ", __LINE__);
     
@@ -112,7 +112,7 @@ void gpu_setup(int n_inputs, void **d_inputs, void **d_w1, void **d_b1, void **d
     memcpy(b1_shm, b1, 10*sizeof(float));
     memcpy(w2_shm, w2, 10*sizeof(float));
 
-    //正常拷贝权重，因为权重需要经常访问
+    // Copy weights normally, as weights need frequent access
     check_error(hipMemcpyHtoD(*d_w1, w1_shm, NR_FEAT*10*sizeof(float)), "hipMemcpyHtoD", __LINE__);
     check_error(hipMemcpyHtoD(*d_b1, b1_shm, 10*sizeof(float)), "hipMemcpyHtoD", __LINE__);
     check_error(hipMemcpyHtoD(*d_w2, w2_shm, 10*sizeof(float)), "hipMemcpyHtoD", __LINE__);
@@ -121,7 +121,7 @@ void gpu_setup(int n_inputs, void **d_inputs, void **d_w1, void **d_b1, void **d
 void gpu_setup_zerocopy(int n_inputs, void **d_w1, void **d_b1, void **d_w2) {
     hipError_t res;
     
-    // 不再分配 d_inputs，因为使用映射内存
+    // Do not allocate d_inputs, as mapped memory is used
     // res = hipMalloc(d_inputs, n_inputs*NR_FEAT*sizeof(float));
     // check_error(res, "hipMalloc ", __LINE__);
     
@@ -142,7 +142,7 @@ void gpu_setup_zerocopy(int n_inputs, void **d_w1, void **d_b1, void **d_w2) {
     memcpy(b1_shm, b1, 10*sizeof(float));
     memcpy(w2_shm, w2, 10*sizeof(float));
 
-    //正常拷贝权重，因为权重需要经常访问
+    // Copy weights normally, as weights need frequent access
     check_error(hipMemcpyHtoD(*d_w1, w1_shm, NR_FEAT*10*sizeof(float)), "hipMemcpyHtoD", __LINE__);
     check_error(hipMemcpyHtoD(*d_b1, b1_shm, 10*sizeof(float)), "hipMemcpyHtoD", __LINE__);
     check_error(hipMemcpyHtoD(*d_w2, w2_shm, 10*sizeof(float)), "hipMemcpyHtoD", __LINE__);
@@ -154,7 +154,7 @@ void gpu_clean(void *d_inputs, void *d_w1, void *d_b1, void *d_w2, void *d_resul
     kava_free(b1_shm);
     kava_free(w2_shm);
     
-    // 不再释放 d_inputs，因为使用映射内存
+    // Do not free d_inputs, as mapped memory is used
     // hipFree(d_inputs);
     hipFree(d_w1);
     hipFree(d_b1);

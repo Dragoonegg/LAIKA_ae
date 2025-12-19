@@ -292,7 +292,7 @@ __global__ void normalize_fused_persistent(int batch_size, float* inputs, float*
         __threadfence_system();
         if (*quit_flag) break;
         if(*task_flag == 1) {
-        // 等待同步标志
+        // Wait for synchronization flag
         if (uid < 5) {  
             float sum = 0;
             for(int j = 0; j < batch_size; j++) {
@@ -330,9 +330,9 @@ __global__ void normalize_fused_persistent(int batch_size, float* inputs, float*
             *output = (*input - avg_out[intrablock_idx]) / var_out[intrablock_idx];
         }
     
-        // 设置完成标志
+        // Set completion flag
             if (tid == 0 && blockIdx.x == 0) {
-                *task_flag = 2; // 表示 normalize 完成
+                *task_flag = 2; // Indicates normalize completion
                 }
             }
             else{
@@ -350,12 +350,12 @@ int tid = threadIdx.x;
 
 
 
-while (true) { // persistent kernel 循环
+while (true) { // persistent kernel loop
     __threadfence_system();
     if (*quit_flag) break;
     
-    if (*task_flag == 2) { // 等待 normalize 完成
-        // 第一阶段：第一层线性变换
+    if (*task_flag == 2) { // Wait for normalize completion
+        // Stage 1: First layer linear transformation
         {
             float* my_row = input + blockIdx.x * 5;
             float* my_out = d_out0 + blockIdx.x * 15;
@@ -371,7 +371,7 @@ while (true) { // persistent kernel 循环
 
         __syncthreads();
 
-        // 第二阶段：第二层线性变换
+        // Stage 2: Second layer linear transformation
         {
             float* my_row = d_out0 + blockIdx.x * 15;
             float* my_out = d_out1 + blockIdx.x * 5;
@@ -387,7 +387,7 @@ while (true) { // persistent kernel 循环
 
         __syncthreads();
 
-        // 第三阶段：第三层线性变换
+        // Stage 3: Third layer linear transformation
         {
             float* my_row = d_out1 + blockIdx.x * 5;
             float* my_out = d_out2 + blockIdx.x * 4;
@@ -403,7 +403,7 @@ while (true) { // persistent kernel 循环
 
         __syncthreads();
 
-        // 第四阶段：argmax 操作
+        // Stage 4: argmax operation
         {
             float* my_row = d_out2 + blockIdx.x * 4;
             if (tid == 0) {
@@ -416,13 +416,13 @@ while (true) { // persistent kernel 循环
             }
         }
 
-        // 设置完成标志
+        // Set completion flag
         if (tid == 0 && blockIdx.x == 0) {
-            *task_flag = 3; // 表示 forward 完成
+            *task_flag = 3; // Indicates forward completion
         }
     } 
     else {
-        __builtin_amdgcn_s_sleep(10000); // 休眠等待
+        __builtin_amdgcn_s_sleep(10000); // Sleep and wait
        
     }
 }

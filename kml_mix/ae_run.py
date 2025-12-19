@@ -9,7 +9,7 @@ import pwd
 import grp
 
 
-# 需要保留的4组前缀
+# 4 prefix groups to keep
 PREFIXES = (
     "KML_CPU_batch_",
     "KML_dGPU_batch_",
@@ -19,24 +19,24 @@ PREFIXES = (
 
 
 def set_file_permissions(file_path):
-    """设置文件权限，让普通用户也能读取（如果通过 sudo 运行）"""
+    """Set file permissions to allow regular users to read (if run via sudo)"""
     try:
-        # 如果通过 sudo 运行，获取原始用户
+        # If run via sudo, get the original user
         original_user = os.environ.get("SUDO_USER")
         if original_user:
             try:
                 user_info = pwd.getpwnam(original_user)
                 uid = user_info.pw_uid
                 gid = user_info.pw_gid
-                # 修改文件所有者为原始用户
+                # Change file ownership to the original user
                 os.chown(file_path, uid, gid)
-                # 设置权限为 644 (rw-r--r--)
+                # Set permissions to 644 (rw-r--r--)
                 os.chmod(file_path, 0o644)
                 print(f"[INFO] Set file ownership to {original_user} and permissions to 644")
             except (KeyError, OSError) as e:
                 print(f"[WARN] Failed to set file ownership: {e}", file=sys.stderr)
         else:
-            # 如果没有 SUDO_USER，至少设置权限让其他用户可读
+            # If no SUDO_USER, at least set permissions to allow other users to read
             os.chmod(file_path, 0o644)
             print(f"[INFO] Set file permissions to 644")
     except OSError as e:
@@ -44,49 +44,49 @@ def set_file_permissions(file_path):
 
 
 def process_log(fin, fout):
-    """处理日志：过滤、去掉时间戳、丢弃warmup样本"""
-    # 记录每一组是否已经丢掉过一个 batch=16 的样本
+    """Process log: filter, remove timestamps, discard warmup samples"""
+    # Track whether each group has already dropped a batch=16 sample
     warmup_dropped = {p: False for p in PREFIXES}
 
     for raw_line in fin:
         line = raw_line.rstrip("\n")
 
-        # 1) 过滤和输出无关的行：只保留包含任意一个前缀的行
+        # 1) Filter out irrelevant lines: only keep lines containing any prefix
         if not any(p in line for p in PREFIXES):
             continue
 
-        # 2) 去掉时间戳部分：取 ']' 之后的内容
-        #    例如：
-        #    "[一 12月  1 19:21:45 2025] MLLB_CPU_batch_16, 14, 14"
+        # 2) Remove timestamp part: take content after ']'
+        #    Example:
+        #    "[Mon Dec  1 19:21:45 2025] MLLB_CPU_batch_16, 14, 14"
         #    -> "MLLB_CPU_batch_16, 14, 14"
         if "] " in line:
             payload = line.split("] ", 1)[1].strip()
         else:
-            # 如果意外没有时间戳，就直接用整行
+            # If no timestamp unexpectedly, use the whole line
             payload = line.strip()
 
-        # 3) 判断属于哪个前缀
+        # 3) Determine which prefix it belongs to
         prefix = None
         for p in PREFIXES:
             if payload.startswith(p):
                 prefix = p
                 break
         if prefix is None:
-            # 理论上不会到这一步，但保险起见
+            # Should not reach here in theory, but just in case
             continue
 
-        # 4) 提取 batch size
-        #    匹配 "_batch_数字"
+        # 4) Extract batch size
+        #    Match "_batch_number"
         m = re.search(r"_batch_(\d+)", payload)
         if m:
             batch = int(m.group(1))
-            # 5) 丢掉每一组第一个 batch=16 的样本（warmup）
+            # 5) Discard the first batch=16 sample for each group (warmup)
             if batch == 16 and not warmup_dropped[prefix]:
                 warmup_dropped[prefix] = True
-                # 不输出这一行
+                # Do not output this line
                 continue
 
-        # 6) 输出处理后的有效行（无时间戳）
+        # 6) Output processed valid line (without timestamp)
         print(payload, file=fout)
 
 
@@ -99,7 +99,7 @@ def main():
     workload_cmd = sys.argv[1]
     log_path = sys.argv[2]
 
-    # 建议要求以 root 运行（AE 文档里说明）
+    # Recommended to run as root (as stated in AE documentation)
     if os.geteuid() != 0:
         print("[ERROR] This script must be run as root (for dmesg).", file=sys.stderr)
         sys.exit(1)
@@ -118,7 +118,7 @@ def main():
         print(f"[ERROR] Failed to open log file {log_path}: {e}", file=sys.stderr)
         sys.exit(1)
 
-    # -T: 打印可读时间戳，更方便评审看
+    # -T: Print readable timestamps, more convenient for review
     dmesg_proc = subprocess.Popen(
         ["dmesg", "-w", "-T"],
         stdout=log_file,
@@ -126,11 +126,11 @@ def main():
         text=True,
     )
 
-    # 稍微等一下，确保 dmesg -w 已经起来
+    # Wait a bit to ensure dmesg -w is up
     time.sleep(0.5)
 
     print(f"[INFO] Running workload command: {workload_cmd}")
-    # shell=True 方便传复杂命令，AE 文档里注明不要给不可信输入
+    # shell=True for convenience in passing complex commands, AE documentation notes not to give untrusted input
     workload_ret = subprocess.call(workload_cmd, shell=True)
 
     print(f"[INFO] Workload finished with exit code {workload_ret}.")
@@ -146,30 +146,30 @@ def main():
         dmesg_proc.kill()
 
     log_file.close()
-    # 设置文件权限，让普通用户也能读取
+    # Set file permissions to allow regular users to read
     set_file_permissions(log_path)
     print(f"[INFO] Kernel log saved to {log_path}")
 
-    # 后处理日志：过滤、去掉时间戳、丢弃warmup样本
+    # Post-process log: filter, remove timestamps, discard warmup samples
     print(f"[INFO] Processing log file...")
     try:
-        # 读取原始日志
+        # Read original log
         with open(log_path, "r", encoding="utf-8", errors="ignore") as fin:
-            # 使用临时文件保存处理后的内容
+            # Use temporary file to save processed content
             with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", delete=False, dir=os.path.dirname(log_path) or ".") as tmp_out:
                 tmp_path = tmp_out.name
                 process_log(fin, tmp_out)
         
-        # 用处理后的文件覆盖原文件
+        # Replace original file with processed file
         os.replace(tmp_path, log_path)
-        # 再次设置权限（因为替换后的文件可能权限不对）
+        # Set permissions again (because the replaced file may have wrong permissions)
         set_file_permissions(log_path)
         print(f"[INFO] Log processed and saved to {log_path}")
     except Exception as e:
         print(f"[WARN] Failed to process log file: {e}", file=sys.stderr)
         print(f"[WARN] Original log file is still available at {log_path}", file=sys.stderr)
 
-    # 把工作负载的返回码传递出去
+    # Pass the workload return code
     sys.exit(workload_ret)
 
 

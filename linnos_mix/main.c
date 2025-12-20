@@ -131,7 +131,7 @@ static int run_apu(void) {
     total_run_times = (u64*) vmalloc(RUNS*sizeof(u64));
 
     
-    //生成一些垃圾输入，n是最大batchsize
+    // Generate some dummy inputs, n is the maximum batch size
 	for(int b = 0 ; b < n; b++) 
 		for(int j = 0; j < LEN_INPUT; j++)
 			inputs_to_gpu[b*31 + j] =  (long) input[j];
@@ -274,7 +274,7 @@ static int run_apu(void) {
             sprintf(out, "%s%d,%lld\n", apu_patterns[nn], batch_size, avg);
             PRINT("%s", out);
             
-            // 释放循环内分配的资源
+            // Free resources allocated within the loop
             if (h_results_mapped) {
                 hipHostUnregister(h_results_mapped);
                 kava_free(h_results_mapped);
@@ -369,14 +369,14 @@ static int run_apu(void) {
             }            
         }
         PRINT("CPU prediction summary: %llu trues, %llu falses %llu result_mismatches\n", true_count, false_count, result_mismatches);
-        // 释放 input_64
+        // Free input_64
         if (input_64) {
             kava_free(input_64);
             input_64 = NULL;
         }
     }
 
-    // 释放所有分配的资源
+    // Free all allocated resources
     gpu_cleanup(&state);
     if (comp_run_times) {
         vfree(comp_run_times);
@@ -429,7 +429,7 @@ static int run_persistent(void) {
         return -1;
     }
  
-//生成一些垃圾输入，n是最大batchsize
+// Generate some dummy inputs, n is the maximum batch size
 	for(int b = 0 ; b < n; b++) 
 		for(int j = 0; j < LEN_INPUT; j++)
 			inputs_to_gpu[b*31 + j] =  (long) input[j];
@@ -503,10 +503,10 @@ check_error(hipStreamCreate(&stream4), "hipStreamCreate stream4", __LINE__);
         for (i = 0 ; i < n_batches ; i++) {
             batch_size = batch_sizes[i];
             
-            // 关键修复：在每次迭代开始时，先确保 persistent kernel 已停止
-            // 然后才能安全地释放之前分配的内存
+            // Critical fix: At the start of each iteration, ensure the persistent kernel has stopped
+            // before safely freeing previously allocated memory
             if (i > 0) {
-                // 停止之前的 persistent kernel（如果还在运行）
+                // Stop the previous persistent kernel (if still running)
                 *h_quit_flag = 1;
                 __sync_synchronize();
                 hipStreamSynchronize(stream1);
@@ -514,8 +514,8 @@ check_error(hipStreamCreate(&stream4), "hipStreamCreate stream4", __LINE__);
                 hipStreamSynchronize(stream3);
             }
             
-            // 释放之前迭代分配的内存（如果存在）
-            // 注意：必须在 persistent kernel 停止后才能释放
+            // Free memory allocated in previous iteration (if exists)
+            // Note: Must free only after the persistent kernel has stopped
             if (h_results_mapped) {
                 hipHostUnregister(h_results_mapped);
                 kava_free(h_results_mapped);
@@ -527,7 +527,7 @@ check_error(hipStreamCreate(&stream4), "hipStreamCreate stream4", __LINE__);
                 h_inputs_mapped = NULL;
             }
             
-            //每个batch开始前，重置同步标志
+            // Reset synchronization flags before each batch starts
             *h_task_flag = 0; *h_quit_flag = 0;
             __sync_synchronize();
             //zerocpy setup memory--------------------------
@@ -597,14 +597,14 @@ check_error(hipStreamCreate(&stream4), "hipStreamCreate stream4", __LINE__);
             };
 
 //Start Persistent Kernel LAYER+0---------------------------------
-            // 关键修复：persistent kernel 只在第一次迭代时启动一次
-            // 但每次迭代都会重新分配内存，所以需要确保：
-            // 1. 第一次迭代时启动 persistent kernel
-            // 2. 后续迭代时，persistent kernel 已经停止（通过 quit_flag），然后重新启动
-            // 3. 或者使用固定的内存（不推荐，因为 batch_size 会变化）
-            // 这里采用方案：每次迭代都重新启动 persistent kernel，确保使用当前的内存指针
+            // Critical fix: persistent kernel is launched once in the first iteration
+            // but memory is reallocated in each iteration, so we need to ensure:
+            // 1. Launch persistent kernel in the first iteration
+            // 2. In subsequent iterations, the persistent kernel has stopped (via quit_flag), then relaunch
+            // 3. Or use fixed memory (not recommended, as batch_size changes)
+            // Here we adopt the approach: relaunch persistent kernel in each iteration to ensure using current memory pointers
             if (nn==0 && i==0){
-                // 第一次启动 persistent kernel
+                // First launch of persistent kernel
                 check_error(hipModuleLaunchKernel(batch_linnos_mid_layer_kernel_persistent, 
                             batch_size, 1, 1,          //blocks
                             256, 1, 1,   //threads per block
@@ -619,8 +619,8 @@ check_error(hipStreamCreate(&stream4), "hipStreamCreate stream4", __LINE__);
                             stream2, args1, NULL),
                         "hipModuleLaunchKernel", __LINE__);
             } else if (nn==0 && i>0) {
-                // 后续迭代：重新启动 persistent kernel 使用新的内存指针
-                // 注意：之前的 kernel 已经在循环开始时停止并同步
+                // Subsequent iterations: relaunch persistent kernel with new memory pointers
+                // Note: previous kernel has already been stopped and synchronized at the start of the loop
                 check_error(hipModuleLaunchKernel(batch_linnos_mid_layer_kernel_persistent, 
                             batch_size, 1, 1,          //blocks
                             256, 1, 1,   //threads per block
@@ -669,7 +669,7 @@ check_error(hipStreamCreate(&stream4), "hipStreamCreate stream4", __LINE__);
 
             for (j = 0 ; j < RUNS ; j++) {
 
-                //测量persistent kernel
+                // Measure persistent kernel
                 c_start = ktime_get_ns();
                 *h_task_flag = 1;
                 while (*h_task_flag != 8) {
@@ -697,14 +697,14 @@ check_error(hipStreamCreate(&stream4), "hipStreamCreate stream4", __LINE__);
             PRINT("linnos+0_APU_PK_batch_%d,%lu\n", batch_size, avg);
             //PRINT("%s", out);
             
-            // 在每次迭代结束时，确保persistent kernel已停止后再释放内存
-            // 注意：这里不释放内存，因为persistent kernel可能还在使用
-            // 内存将在下一次迭代开始时释放，或者在循环结束后释放
+            // At the end of each iteration, ensure persistent kernel has stopped before freeing memory
+            // Note: Memory is not freed here because the persistent kernel may still be using it
+            // Memory will be freed at the start of the next iteration, or after the loop ends
         }
 
     }
     
-    // 在循环结束后，确保persistent kernel已停止，然后释放最后一次分配的内存
+    // After the loop ends, ensure persistent kernel has stopped, then free the last allocated memory
     *h_quit_flag = 1;
     __sync_synchronize();
     hipStreamSynchronize(stream1);

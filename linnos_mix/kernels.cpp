@@ -177,9 +177,9 @@ __global__ void prediction_mid_layer_batch_persistent(long *weight_0_T_ent, long
 	int input_ind = blockIdx.x*LEN_INPUT;
 	int blockId = blockIdx.x;
 	
-	// 调试信息：只有第一个线程打印启动信息
+	// Debug info: only the first thread prints startup information
 	// if (threadId == 0 && blockIdx.x == 0) {
-	// 	printf("[DEBUG] prediction_mid_layer_batch kernel 启动成功!\n");
+	// 	printf("[DEBUG] prediction_mid_layer_batch kernel started successfully!\n");
 	// }
 	while (true)
 	{	__threadfence_system();
@@ -229,10 +229,10 @@ __global__ void prediction_mid_layer_batch_persistent(long *weight_0_T_ent, long
 					mid_res_i[update_index] = 0;
 				}		
     		}
-			// 设置完成标志 - 只有第一个线程设置
+			// Set completion flag - only the first thread sets it
 			if (threadId == 0 && blockIdx.x == 0) {
-				*task_flag = 2; // 设置为2表示任务完成
-				__threadfence_system(); // 确保对host可见
+				*task_flag = 2; // Set to 2 to indicate task completion
+				__threadfence_system(); // Ensure visible to host
 			}
 		}
 		else{
@@ -254,7 +254,7 @@ __global__ void prediction_final_layer_batch_persistent(
     int dim = blockDim.x;
     int k;
 
-    // 只允许 64 线程
+    // Only allow 64 threads
     if (dim != THREADS_PER_BLOCK) {printf("dim != THREADS_PER_BLOCK\n"); return;}
 
     while (true) {
@@ -264,7 +264,7 @@ __global__ void prediction_final_layer_batch_persistent(
 			//+0 task_flag =2
 			//+1 task_flag =3
 			//+2 task_flag =4
-            // 每个线程初始化自己的结果
+            // Each thread initializes its own result
             long sum = 0;
             if (threadId < WARP_SIZE) {
                 for (k = threadId; k < LEN_LAYER_0; k += WARP_SIZE) {
@@ -275,11 +275,11 @@ __global__ void prediction_final_layer_batch_persistent(
                     sum += mid_res_i[index * LEN_LAYER_0 + k] * weight_1_T_ent[k + 256];
                 }
             }
-            // 写入临时结果
+            // Write temporary result
             dd_final_res_i[index * dim + threadId] = sum;
 
             __syncthreads();
-            // 归约前 32 个线程
+            // Reduce first 32 threads
             if (threadId == 0) {
                 long total = 0;
                 for (int i = 0; i < WARP_SIZE; i++) {
@@ -287,7 +287,7 @@ __global__ void prediction_final_layer_batch_persistent(
                 }
                 dd_final_res_i[index * dim] = total + bias_1_ent[0];
             }
-            // 归约后 32 个线程
+            // Reduce last 32 threads
             if (threadId == WARP_SIZE) {
                 long total = 0;
                 for (int i = 0; i < WARP_SIZE; i++) {
@@ -299,7 +299,7 @@ __global__ void prediction_final_layer_batch_persistent(
             
 
             if (threadId == 0 && blockIdx.x == 0) {
-                *task_flag = 8; // 表示完成
+                *task_flag = 8; // Indicate completion
                 __threadfence_system();
             }
         }

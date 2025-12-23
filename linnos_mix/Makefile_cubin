@@ -5,5 +5,6 @@ CUDA_LIB_PATH := $(CUDA_PATH)/lib64
 INCLUDES      := -I$(CUDA_INC_PATH) -I.
 LDFLAGS       := -L$(CUDA_LIB_PATH) -lcuda
 GENCODE_FLAGS   := -gencode arch=compute_89,code=sm_89
+NVCC          := $(CUDA_PATH)/bin/nvcc
 all: 
-	nvcc $(NVCCFLAGS) --cubin $(GENCODE_FLAGS) $(INCLUDES) -o linnos.cubin kernels.cu $(LDFLAGS)
+	$(NVCC) $(NVCCFLAGS) --cubin $(GENCODE_FLAGS) $(INCLUDES) -o linnos.cubin kernels.cu $(LDFLAGS)

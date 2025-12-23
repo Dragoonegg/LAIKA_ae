@@ -19,6 +19,51 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+import matplotlib.pyplot as plt
+import numpy as np
+import csv
+import os
+from datetime import datetime
+
+# ------------------------------ 数据加载函数 ------------------------------
+def parse_size(size_str):
+    """将大小字符串转换为KB数值"""
+    size_str = size_str.strip()
+    if size_str.endswith('K'):
+        return int(size_str[:-1])
+    elif size_str.endswith('M'):
+        return int(size_str[:-1]) * 1024
+    else:
+        return int(size_str)
+
+def load_data_from_kernel_log(log_file='kernel.log'):
+    """从 kernel.log 文件加载数据"""
+    log_path = os.path.join(os.path.dirname(__file__), log_file)
+    
+    data_dict = {}
+    batch = None
+    
+    with open(log_path, 'r') as f:
+        reader = csv.reader(f)
+        # 读取第一行（列标题）
+        header = next(reader)
+        # 解析 batch 大小
+        batch_sizes = [parse_size(size) for size in header[1:]]  # 跳过第一个空列
+        batch = np.array(batch_sizes)
+        
+        # 读取数据行
+        for row in reader:
+            if not row or not row[0]:
+                continue
+            key = row[0].strip()
+            values = [float(val.strip()) for val in row[1:]]
+            data_dict[key] = np.array(values)
+    
+    return batch, data_dict
+
+# ------------------------------ 绘图函数：raw ------------------------------
+def draw_raw(batch, data, output_file='./result_raw.pdf'):
+    """绘制原始数据图"""
     cpu_rd = data.get('CPU_rd', np.array([]))
     cpu_wt = data.get('CPU_wt', np.array([]))
     dgpu_rd = data.get('LAKE_rd', np.array([]))  # dgpu对应LAKE
